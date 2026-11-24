@@ -113,6 +113,15 @@ export enum CrossfadeStyle {
     S_CURVE = 'sCurve',
 }
 
+export enum EqType {
+    BandNotch = 'bandnotch', // Removes a narrow band of frequencies
+    HighPass = 'highpass', // Attenuates everything below the cutoff
+    HighShelf = 'highshelf', // Boosts or cuts high frequencies
+    LowPass = 'lowpass', // Attenuates everything above the cutoff
+    LowShelf = 'lowshelf', // Boosts or cuts low frequencies
+    Peaking = 'peaking', // Boosts or cuts a narrow band
+}
+
 export enum FontType {
     BUILT_IN = 'builtIn',
     CUSTOM = 'custom',
@@ -215,6 +224,22 @@ export type DiscoveredServerItem = {
     url: string;
 };
 
+export interface EqBand {
+    freq: number; // Center frequency in Hz
+    gain: number; // Gain in dB, clamped to [-12, 12]
+    // Present for bands created by the UI/presets; optional so settings
+    // saved before the parametric EQ upgrade still parse.
+    id?: string;
+    qFactor: number; // Quality factor (0.3–5.0), controls band width
+    type: EqType; // EQ filter type
+}
+
+export interface EqSettings {
+    bands: EqBand[]; // Dynamic array — defaults to 3 bands (Low / Mid / High)
+    enabled: boolean;
+    preamp: number; // Pre-gain in dB, clamped to [-12, 12]
+}
+
 export type GridCardData = {
     cardControls: any;
     cardRows: CardRow<Album | AlbumArtist | Artist | Playlist | Song>[];
@@ -301,3 +326,95 @@ export type WebAudio = {
     gains: GainNode[];
     visualizerInputs?: AudioNode[];
 };
+
+const generateId = (): string =>
+    typeof crypto !== 'undefined' && crypto.randomUUID
+        ? crypto.randomUUID()
+        : Math.random().toString(36).substring(2, 15);
+
+const bandFactory = (
+    freq: number,
+    gain: number,
+    type: EqType = EqType.Peaking,
+    qFactor = 1.41,
+): EqBand => ({
+    freq,
+    gain,
+    id: generateId(),
+    qFactor,
+    type,
+});
+
+// Default 3-band EQ: low shelf / peaking mid / high shelf.
+export const getDefaultEqBands = (): EqBand[] => [
+    bandFactory(300, 0, EqType.LowShelf, 1.5),
+    bandFactory(3000, 0, EqType.Peaking, 2.0),
+    bandFactory(6300, 0, EqType.HighShelf, 1.8),
+];
+
+// ─── Preset definitions ────────────────────────────────────────────────
+export type EqPreset = {
+    bands: EqBand[];
+    name: string;
+};
+
+// Shared module state — callers that persist a preset should clone the
+// bands and regenerate ids so two applications never share band ids.
+export const eqPresets: EqPreset[] = [
+    {
+        bands: getDefaultEqBands(),
+        name: 'Flat',
+    },
+    {
+        bands: [
+            bandFactory(300, 2),
+            bandFactory(600, 2),
+            bandFactory(1200, 3),
+            bandFactory(2400, 2),
+            bandFactory(4800, 1),
+            bandFactory(9600, 0),
+        ],
+        name: 'Acoustic',
+    },
+    {
+        bands: [
+            bandFactory(300, 6),
+            bandFactory(240, 5),
+            bandFactory(180, 4),
+            bandFactory(120, 2, EqType.LowShelf),
+        ],
+        name: 'Bass Boost',
+    },
+    {
+        bands: [
+            bandFactory(300, -6),
+            bandFactory(240, -5),
+            bandFactory(180, -4),
+            bandFactory(120, -2, EqType.LowShelf),
+        ],
+        name: 'Bass Cut',
+    },
+    {
+        bands: [
+            bandFactory(300, 4),
+            bandFactory(600, 3),
+            bandFactory(1200, 1),
+            bandFactory(2400, 0),
+            bandFactory(4800, -1),
+            bandFactory(9600, 1),
+            bandFactory(19200, 3, EqType.HighShelf),
+        ],
+        name: 'Electronic',
+    },
+    {
+        bands: [
+            bandFactory(300, 5),
+            bandFactory(240, 4),
+            bandFactory(180, 2),
+            bandFactory(120, 1, EqType.LowShelf),
+            bandFactory(9600, -1),
+            bandFactory(19200, 3, EqType.HighShelf),
+        ],
+        name: 'Hip-Hop',
+    },
+];

@@ -24,6 +24,7 @@ import { ResumePositionHook } from '/@/renderer/features/player/hooks/use-resume
 import { ScrobbleHook } from '/@/renderer/features/player/hooks/use-scrobble';
 import { UpdateCurrentSongHook } from '/@/renderer/features/player/hooks/use-update-current-song';
 import { useWebAudio } from '/@/renderer/features/player/hooks/use-webaudio';
+import { applyBandToBiquadFilter } from '/@/renderer/features/player/utils/webaudio-eq';
 import { RadioDlnaPlayer } from '/@/renderer/features/radio/components/radio-dlna-player';
 import { RadioWebPlayer } from '/@/renderer/features/radio/components/radio-web-player';
 import {
@@ -240,14 +241,11 @@ const AudioPlayersContent = ({
         const preampGain = context.createGain();
         preampGain.gain.value = equalizer.enabled ? Math.pow(10, equalizer.preamp / 20) : 1;
 
-        // One peaking BiquadFilterNode per EQ band
+        // One parametric EQ filter per band — the type/Q mapping is handled
+        // by the shared helper, so live settings updates stay in sync.
         const eqFilters: BiquadFilterNode[] = equalizer.bands.map((band) => {
             const filter = context.createBiquadFilter();
-            filter.type = 'peaking';
-            filter.frequency.value = band.freq;
-            // Q of 1.41 gives roughly 1-octave bandwidth per band
-            filter.Q.value = 1.41;
-            filter.gain.value = equalizer.enabled ? band.gain : 0;
+            applyBandToBiquadFilter(filter, band, equalizer.enabled);
             return filter;
         });
 

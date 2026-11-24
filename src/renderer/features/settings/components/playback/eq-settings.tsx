@@ -3,13 +3,10 @@ import isElectron from 'is-electron';
 import { memo, useCallback, useContext, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
-import {
-    buildMpvAudioFilters,
-    type CompressorSettings,
-    type EqSettings as EqSettingsType,
-} from './mpv-audio-filters';
+import { buildMpvAudioFilters, type CompressorSettings } from './mpv-audio-filters';
 
 import { WebAudioContext } from '/@/renderer/features/player/context/webaudio-context';
+import { applyBandToBiquadFilter } from '/@/renderer/features/player/utils/webaudio-eq';
 import {
     SettingOption,
     SettingsSection,
@@ -25,7 +22,7 @@ import { Stack } from '/@/shared/components/stack/stack';
 import { Switch } from '/@/shared/components/switch/switch';
 import { TextInput } from '/@/shared/components/text-input/text-input';
 import { Text } from '/@/shared/components/text/text';
-import { PlayerType } from '/@/shared/types/types';
+import { type EqSettings as EqSettingsType, PlayerType } from '/@/shared/types/types';
 
 const mpvPlayer = isElectron() ? window.api.mpvPlayer : null;
 
@@ -304,7 +301,7 @@ export const EqSettings = memo(() => {
             dsp.eqFilters.forEach((filter, i) => {
                 const band = eq.bands[i];
                 if (band) {
-                    filter.gain.value = eq.enabled ? band.gain : 0;
+                    applyBandToBiquadFilter(filter, band, eq.enabled);
                 }
             });
 

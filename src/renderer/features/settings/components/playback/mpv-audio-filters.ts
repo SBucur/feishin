@@ -1,6 +1,8 @@
 // Builds the MPV `af` audio filter chain string for EQ and compressor.
 // Uses FFmpeg lavfi filters, which MPV exposes natively.
 
+import { EqBand, EqSettings, EqType } from '/@/shared/types/types';
+
 export interface CompressorSettings {
     attack: number; // ms
     enabled: boolean;
@@ -11,36 +13,8 @@ export interface CompressorSettings {
     threshold: number; // dB, e.g. -24
 }
 
-export interface EqBand {
-    freq: number;
-    gain: number; // dB, clamped to [-12, 12]
-}
-
-export interface EqSettings {
-    bands: EqBand[];
-    enabled: boolean;
-    preamp: number; // dB pre-gain before bands, clamped to [-12, 12]
-}
-
-// Octave widths for each band — tuned so 10 bands cover 20Hz–20kHz
-// with no gaps and gentle overlap.
-const BAND_WIDTHS: Record<number, number> = {
-    31.5: 1.9,
-    63: 1.3,
-    125: 1.0,
-    250: 1.0,
-    500: 1.0,
-    1000: 1.0,
-    2000: 1.0,
-    3000: 1.0,
-    4000: 1.0,
-    6300: 1.2,
-    10000: 1.2,
-    16000: 1.5,
-};
-
 /**
- * Returns the MPV `af` property value for the given EQ + compressor settings.
+ * Returns the MPV `af` property value for EQ + compressor settings.
  * An empty string clears all filters (pass-through).
  */
 export function buildMpvAudioFilters(eq: EqSettings, compressor: CompressorSettings): string {
@@ -55,11 +29,9 @@ export function buildMpvAudioFilters(eq: EqSettings, compressor: CompressorSetti
             parts.push(`volume=${eq.preamp}dB`);
         }
 
-        // One parametric EQ filter per non-zero band
         for (const band of eq.bands) {
-            if (band.gain === 0) continue;
-            const w = BAND_WIDTHS[band.freq] ?? 1.0;
-            parts.push(`lavfi=[equalizer=f=${band.freq}:width_type=o:w=${w}:g=${band.gain}]`);
+            const filter = buildMpvEqFilter(band);
+            if (filter) parts.push(filter);
         }
     }
 
@@ -80,3 +52,36 @@ export function buildMpvAudioFilters(eq: EqSettings, compressor: CompressorSetti
 
     return parts.join(',');
 }
+
+// Converts a Q factor to a band width in octaves for lavfi `width_type=o`
+// filters: BW_oct = (2/ln2) * asinh(1 / (2*Q)). Q=1.41 → ~1 octave, which
+// matches the ~1-octave spacing of the old graphical EQ bands.
+const qToOctaves = (qFactor: number): number =>
+    Math.min(5, Math.max(0.1, (2 / Math.LN2) * Math.asinh(1 / (2 * qFactor))));
+
+const buildMpvEqFilter = (band: EqBand): null | string => {
+    const w = qToOctaves(band.qFactor).toFixed(2);
+
+    switch (band.type) {
+        case EqType.BandNotch:
+            // FFmpeg 4.1+ `bandreject` is a true notch (gain-independent)
+            return `lavfi=[bandreject=f=${band.freq}:width_type=o:w=${w}]`;
+        case EqType.HighPass:
+            return `lavfi=[highpass=f=${band.freq}:width_type=o:w=${w}]`;
+        case EqType.HighShelf:
+            if (Math.abs(band.gain) < 0.1) return null;
+            // FFmpeg's `treble` filter is a high shelf
+            return `lavfi=[treble=g=${band.gain}:f=${band.freq}:w=${w}]`;
+        case EqType.LowPass:
+            // Pass filters have no gain — only frequency and width matter
+            return `lavfi=[lowpass=f=${band.freq}:width_type=o:w=${w}]`;
+        case EqType.LowShelf:
+            if (Math.abs(band.gain) < 0.1) return null;
+            // FFmpeg's `bass` filter is a low shelf; `g` is in dB
+            return `lavfi=[bass=g=${band.gain}:f=${band.freq}:w=${w}]`;
+        case EqType.Peaking:
+        default:
+            if (Math.abs(band.gain) < 0.1) return null;
+            return `lavfi=[equalizer=f=${band.freq}:width_type=o:w=${w}:g=${band.gain}]`;
+    }
+};

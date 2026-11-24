@@ -31,7 +31,9 @@ import { sanitizeCss } from '/@/renderer/utils/sanitize';
 import { AppTheme } from '/@/shared/themes/app-theme-types';
 import { LibraryItem, LyricSource, SavedCollection } from '/@/shared/types/domain-types';
 import {
+    EqType,
     FontType,
+    getDefaultEqBands,
     ItemListKey,
     ListDisplayType,
     ListPaginationType,
@@ -294,15 +296,22 @@ const MpvSettingsSchema = z.object({
     replayGainMode: z.enum(['album', 'no', 'track']),
     replayGainPreampDB: z.number().optional(),
 });
+
+const EqBandSchema = z.object({
+    freq: z.number().positive(),
+    gain: z.number(),
+    // id/type/qFactor were added with the parametric EQ. They are optional
+    // with peaking + ~1-octave defaults so settings saved before the
+    // upgrade keep their previous behaviour.
+    id: z.string().optional(),
+    qFactor: z.number().min(0.3).max(5).default(1.41),
+    type: z.nativeEnum(EqType).default(EqType.Peaking),
+});
+
 const EqSettingsSchema = z.object({
-    bands: z.array(
-        z.object({
-            freq: z.number(),
-            gain: z.number(),
-        }),
-    ),
+    bands: z.array(EqBandSchema),
     enabled: z.boolean(),
-    preamp: z.number(),
+    preamp: z.number().min(-12).max(12),
 });
 
 const CompressorSettingsSchema = z.object({
@@ -2088,20 +2097,7 @@ const initialState: SettingsState = {
             threshold: -24,
         },
         equalizer: {
-            bands: [
-                { freq: 31.5, gain: 0 },
-                { freq: 63, gain: 0 },
-                { freq: 125, gain: 0 },
-                { freq: 250, gain: 0 },
-                { freq: 500, gain: 0 },
-                { freq: 1000, gain: 0 },
-                { freq: 2000, gain: 0 },
-                { freq: 3000, gain: 0 },
-                { freq: 4000, gain: 0 },
-                { freq: 6300, gain: 0 },
-                { freq: 10000, gain: 0 },
-                { freq: 16000, gain: 0 },
-            ],
+            bands: getDefaultEqBands(),
             enabled: false,
             preamp: 0,
         },
