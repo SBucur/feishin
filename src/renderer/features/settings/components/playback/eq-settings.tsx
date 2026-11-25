@@ -6,7 +6,10 @@ import { useTranslation } from 'react-i18next';
 import { buildMpvAudioFilters, type CompressorSettings } from './mpv-audio-filters';
 
 import { WebAudioContext } from '/@/renderer/features/player/context/webaudio-context';
-import { applyBandToBiquadFilter } from '/@/renderer/features/player/utils/webaudio-eq';
+import {
+    applyBandToBiquadFilter,
+    rebuildBiquadChain,
+} from '/@/renderer/features/player/utils/webaudio-eq';
 import {
     SettingOption,
     SettingsSection,
@@ -22,46 +25,50 @@ import { Stack } from '/@/shared/components/stack/stack';
 import { Switch } from '/@/shared/components/switch/switch';
 import { TextInput } from '/@/shared/components/text-input/text-input';
 import { Text } from '/@/shared/components/text/text';
-import { type EqSettings as EqSettingsType, PlayerType } from '/@/shared/types/types';
+import {
+    type EqBand,
+    eqPresets,
+    type EqSettings as EqSettingsType,
+    EqType,
+    LEGACY_EQ_FREQUENCIES,
+    PlayerType,
+} from '/@/shared/types/types';
 
 const mpvPlayer = isElectron() ? window.api.mpvPlayer : null;
-
-const BAND_LABELS = [
-    '31.5',
-    '63',
-    '125',
-    '250',
-    '500',
-    '1k',
-    '2k',
-    '3k',
-    '4k',
-    '6.3k',
-    '10k',
-    '16k',
-];
 
 const EQ_MIN = -12;
 const EQ_MAX = 12;
 const EQ_STEP = 0.5;
 
-// ─── Built-in EQ presets ──────────────────────────────────────────────────────
-const EQ_PRESETS: Record<string, number[]> = {
-    Acoustic: [2, 2, 3, 2, 1, 0, 1, 2, 2, 2, 2, 1],
-    'Bass Boost': [6, 5, 4, 2, 1, 0, 0, 0, 0, 0, 0, 0],
-    'Bass Cut': [-6, -5, -4, -2, -1, 0, 0, 0, 0, 0, 0, 0],
-    Classical: [0, 0, 0, 0, 0, 0, -1, -1, 0, 0, 0, -3],
-    Electronic: [4, 3, 1, 0, -1, 0, 1, 0, 0, 2, 3, 4],
-    Flat: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-    'Hip-Hop': [5, 4, 2, 1, 0, -1, 0, 1, 0, 1, 2, 3],
-    Jazz: [2, 1, 0, 1, 2, 2, 1, 0, 0, 1, 2, 2],
-    Loudness: [5, 3, 1, 0, -1, -2, -2, -1, 0, 1, 3, 6],
-    Pop: [-1, 0, 2, 3, 3, 2, 0, -1, -1, 0, 0, 0],
-    Rock: [3, 2, 1, 0, -1, 0, 1, 2, 2, 2, 3, 3],
-    'Treble Boost': [0, 0, 0, 0, 0, 0, 1, 2, 3, 4, 5, 6],
-    'Treble Cut': [0, 0, 0, 0, 0, 0, -1, -2, -3, -4, -5, -6],
-    'V-Shape': [5, 3, 1, 0, -1, -2, -2, -1, 0, 1, 3, 5],
-    'Vocal Boost': [-1, 0, 1, 2, 3, 4, 4, 3, 2, 1, 0, -1],
+// Parametric band limits (qFactor matches the zod schema in settings.store)
+const FREQ_MIN = 20;
+const FREQ_MAX = 20_000;
+const Q_MIN = 0.3;
+const Q_MAX = 5;
+// Room for the 12-band presets plus a couple of manual additions
+const MAX_BANDS = 16;
+
+const formatHz = (freq: number): string =>
+    freq >= 1000 ? `${String(freq / 1000).replace(/\.0$/, '')}k` : String(freq);
+
+// Old custom presets were Record<string, number[]> — 12 gains for the fixed
+// graphical EQ. Convert them to peaking bands at the legacy frequencies.
+const migrateCustomEqPresets = (raw: Record<string, unknown>): Record<string, EqBand[]> => {
+    const presets: Record<string, EqBand[]> = {};
+    for (const [name, value] of Object.entries(raw)) {
+        if (!Array.isArray(value)) continue;
+        if (value.every((v) => typeof v === 'number')) {
+            presets[name] = LEGACY_EQ_FREQUENCIES.map((freq, i) => ({
+                freq,
+                gain: (value as number[])[i] ?? 0,
+                qFactor: 1.41,
+                type: EqType.Peaking,
+            }));
+        } else {
+            presets[name] = value as EqBand[];
+        }
+    }
+    return presets;
 };
 
 // ─── Built-in compressor presets ─────────────────────────────────────────────
@@ -269,8 +276,8 @@ export const EqSettings = memo(() => {
     }, [webAudioContext]);
 
     // Custom preset state — stored in localStorage separately from main store
-    const [customEqPresets, setCustomEqPresets] = useState<Record<string, number[]>>(() =>
-        loadCustomPresets<number[]>(LS_EQ_PRESETS),
+    const [customEqPresets, setCustomEqPresets] = useState<Record<string, EqBand[]>>(() =>
+        migrateCustomEqPresets(loadCustomPresets<unknown>(LS_EQ_PRESETS)),
     );
     const [customCompPresets, setCustomCompPresets] = useState<Record<string, CompressorPreset>>(
         () => loadCustomPresets<CompressorPreset>(LS_COMP_PRESETS),
@@ -290,20 +297,26 @@ export const EqSettings = memo(() => {
             // ── Web Audio player ──────────────────────────────────────────
             // Read from ref so we always get the current AudioContext state,
             // not the stale value captured when this callback was created.
-            const dsp = webAudioContextRef.current.webAudio?.dsp;
-            if (!dsp) return;
+            const webAudio = webAudioContextRef.current.webAudio;
+            const dsp = webAudio?.dsp;
+            if (!dsp || !webAudio) return;
 
             // Mutations to Web Audio API AudioParam values are intentional
             // side effects on the live audio graph, not React state mutations.
             // eslint-disable-next-line react-hooks/immutability
             dsp.preampGain.gain.value = eq.enabled ? Math.pow(10, eq.preamp / 20) : 1;
 
-            dsp.eqFilters.forEach((filter, i) => {
-                const band = eq.bands[i];
-                if (band) {
-                    applyBandToBiquadFilter(filter, band, eq.enabled);
-                }
-            });
+            if (dsp.eqFilters.length !== eq.bands.length) {
+                // Band count changed (add/remove) — rewire the graph segment
+                dsp.eqFilters = rebuildBiquadChain(webAudio.context, dsp, eq.bands, eq.enabled);
+            } else {
+                dsp.eqFilters.forEach((filter, i) => {
+                    const band = eq.bands[i];
+                    if (band) {
+                        applyBandToBiquadFilter(filter, band, eq.enabled);
+                    }
+                });
+            }
 
             if (compressor.enabled) {
                 dsp.compressor.threshold.value = compressor.threshold;
@@ -346,16 +359,47 @@ export const EqSettings = memo(() => {
         applyFilters(newEq, settings.compressor);
     };
 
-    const handleBandChangeEnd = (index: number, gain: number) => {
-        const newBands = settings.equalizer.bands.map((b, i) => (i === index ? { ...b, gain } : b));
+    const handleBandPatch = (index: number, patch: Partial<EqBand>) => {
+        const newBands = settings.equalizer.bands.map((b, i) =>
+            i === index ? { ...b, ...patch } : b,
+        );
         const newEq = { ...settings.equalizer, bands: newBands };
         setSettings({ playback: { equalizer: newEq } });
         applyFilters(newEq, settings.compressor);
     };
 
-    const applyEqPreset = (gains: number[]) => {
-        const newBands = settings.equalizer.bands.map((b, i) => ({ ...b, gain: gains[i] ?? 0 }));
-        const newEq = { ...settings.equalizer, bands: newBands, preamp: 0 };
+    const handleAddBand = () => {
+        if (settings.equalizer.bands.length >= MAX_BANDS) return;
+        const band: EqBand = {
+            freq: 1000,
+            gain: 0,
+            qFactor: 1.41,
+            type: EqType.Peaking,
+        };
+        const newEq = { ...settings.equalizer, bands: [...settings.equalizer.bands, band] };
+        setSettings({ playback: { equalizer: newEq } });
+        applyFilters(newEq, settings.compressor);
+    };
+
+    const handleRemoveBand = (index: number) => {
+        if (settings.equalizer.bands.length <= 1) return;
+        const newEq = {
+            ...settings.equalizer,
+            bands: settings.equalizer.bands.filter((_, i) => i !== index),
+        };
+        setSettings({ playback: { equalizer: newEq } });
+        applyFilters(newEq, settings.compressor);
+    };
+
+    // Presets replace the whole band set. Bands are copied with freshly
+    // generated ids so applied bands never share identity with the shared
+    // preset module state (or with a second application of the same preset).
+    const applyEqPreset = (bands: EqBand[]) => {
+        const newEq = {
+            ...settings.equalizer,
+            bands: bands.map((b) => ({ ...b, id: crypto.randomUUID() })),
+            preamp: 0,
+        };
         setSettings({ playback: { equalizer: newEq } });
         applyFilters(newEq, settings.compressor);
     };
@@ -363,8 +407,8 @@ export const EqSettings = memo(() => {
     const handleSaveEqPreset = () => {
         const name = saveEqName.trim();
         if (!name) return;
-        const gains = settings.equalizer.bands.map((b) => b.gain);
-        const updated = { ...customEqPresets, [name]: gains };
+        const bands = settings.equalizer.bands.map((b) => ({ ...b }));
+        const updated = { ...customEqPresets, [name]: bands };
         setCustomEqPresets(updated);
         saveCustomPresets(LS_EQ_PRESETS, updated);
         setSaveEqName('');
@@ -443,7 +487,7 @@ export const EqSettings = memo(() => {
     const eqPresetSelectData = [
         {
             group: t('setting.equalizerPresetGroupBuiltIn'),
-            items: Object.keys(EQ_PRESETS).map((name) => ({ label: name, value: name })),
+            items: eqPresets.map((preset) => ({ label: preset.name, value: preset.name })),
         },
         ...(Object.keys(customEqPresets).length > 0
             ? [
@@ -477,6 +521,15 @@ export const EqSettings = memo(() => {
     ];
 
     // ── EQ SettingsSection options ────────────────────────────────────────────
+    const eqTypeOptions = [
+        { label: t('setting.equalizerTypePeaking'), value: EqType.Peaking },
+        { label: t('setting.equalizerTypeLowShelf'), value: EqType.LowShelf },
+        { label: t('setting.equalizerTypeHighShelf'), value: EqType.HighShelf },
+        { label: t('setting.equalizerTypeLowPass'), value: EqType.LowPass },
+        { label: t('setting.equalizerTypeHighPass'), value: EqType.HighPass },
+        { label: t('setting.equalizerTypeBandNotch'), value: EqType.BandNotch },
+    ];
+
     const eqOptions: SettingOption[] = [
         {
             control: (
@@ -501,8 +554,10 @@ export const EqSettings = memo(() => {
                                   data={eqPresetSelectData}
                                   onChange={(name) => {
                                       if (!name) return;
-                                      const preset = customEqPresets[name] ?? EQ_PRESETS[name];
-                                      if (preset) applyEqPreset(preset);
+                                      const bands =
+                                          customEqPresets[name] ??
+                                          eqPresets.find((p) => p.name === name)?.bands;
+                                      if (bands) applyEqPreset(bands);
                                   }}
                                   placeholder={t('setting.equalizerPresetSelectPlaceholder')}
                                   searchable
@@ -608,19 +663,99 @@ export const EqSettings = memo(() => {
                   },
                   {
                       control: (
-                          // EqBandSlider uses useMove for correct vertical drag direction
-                          // (up = higher value, down = lower value). The NumberInput above
-                          // each band allows precise manual entry.
-                          <Group align="flex-end" gap={2} wrap="nowrap">
+                          // One column per band: vertical gain slider on top
+                          // (EqBandSlider uses useMove for correct drag
+                          // direction), then filter type, frequency (Hz) and Q
+                          // controls, and a remove button.
+                          <Group align="flex-start" gap={6} wrap="wrap">
                               {settings.equalizer.bands.map((band, i) => (
-                                  <EqBandSlider
-                                      freq={band.freq}
-                                      gain={band.gain}
-                                      key={band.freq}
-                                      label={BAND_LABELS[i] ?? String(band.freq)}
-                                      onChangeEnd={(v) => handleBandChangeEnd(i, v)}
-                                  />
+                                  <Stack align="center" gap={4} key={band.id ?? i} w={116}>
+                                      <EqBandSlider
+                                          freq={band.freq}
+                                          gain={band.gain}
+                                          label={formatHz(band.freq)}
+                                          onChangeEnd={(v) => handleBandPatch(i, { gain: v })}
+                                      />
+                                      <Select
+                                          data={eqTypeOptions}
+                                          onChange={(value) =>
+                                              value && handleBandPatch(i, { type: value as EqType })
+                                          }
+                                          size="xs"
+                                          value={band.type}
+                                          w={104}
+                                      />
+                                      <Group gap={4}>
+                                          <NumberInput
+                                              defaultValue={band.freq}
+                                              hideControls
+                                              key={`freq-${band.freq}`}
+                                              max={FREQ_MAX}
+                                              min={FREQ_MIN}
+                                              onBlur={(e) => {
+                                                  const val = parseFloat(e.currentTarget.value);
+                                                  if (!isNaN(val)) {
+                                                      handleBandPatch(i, {
+                                                          freq: Math.max(
+                                                              FREQ_MIN,
+                                                              Math.min(FREQ_MAX, val),
+                                                          ),
+                                                      });
+                                                  }
+                                              }}
+                                              onKeyDown={(e) => {
+                                                  if (e.key === 'Enter') e.currentTarget.blur();
+                                              }}
+                                              size="xs"
+                                              title={t('setting.equalizerBandFrequency')}
+                                              w={64}
+                                          />
+                                          <NumberInput
+                                              defaultValue={band.qFactor}
+                                              hideControls
+                                              key={`q-${band.qFactor}`}
+                                              max={Q_MAX}
+                                              min={Q_MIN}
+                                              onBlur={(e) => {
+                                                  const val = parseFloat(e.currentTarget.value);
+                                                  if (!isNaN(val)) {
+                                                      handleBandPatch(i, {
+                                                          qFactor: Math.max(
+                                                              Q_MIN,
+                                                              Math.min(Q_MAX, val),
+                                                          ),
+                                                      });
+                                                  }
+                                              }}
+                                              onKeyDown={(e) => {
+                                                  if (e.key === 'Enter') e.currentTarget.blur();
+                                              }}
+                                              size="xs"
+                                              step={0.1}
+                                              title={t('setting.equalizerBandQ')}
+                                              w={50}
+                                          />
+                                      </Group>
+                                      <Button
+                                          aria-label={t('setting.equalizerBandRemove')}
+                                          disabled={settings.equalizer.bands.length <= 1}
+                                          onClick={() => handleRemoveBand(i)}
+                                          size="xs"
+                                          title={t('setting.equalizerBandRemove')}
+                                          variant="subtle"
+                                      >
+                                          ×
+                                      </Button>
+                                  </Stack>
                               ))}
+                              <Button
+                                  disabled={settings.equalizer.bands.length >= MAX_BANDS}
+                                  onClick={handleAddBand}
+                                  size="xs"
+                                  variant="subtle"
+                              >
+                                  {t('setting.equalizerBandAdd')}
+                              </Button>
                           </Group>
                       ),
                       description: t('setting.equalizerBands', { context: 'description' }),

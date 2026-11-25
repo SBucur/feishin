@@ -31,6 +31,7 @@ import { sanitizeCss } from '/@/renderer/utils/sanitize';
 import { AppTheme } from '/@/shared/themes/app-theme-types';
 import { LibraryItem, LyricSource, SavedCollection } from '/@/shared/types/domain-types';
 import {
+    EqBand,
     EqType,
     FontType,
     getDefaultEqBands,
@@ -2929,10 +2930,26 @@ export const useSettingsStore = createWithEqualityFn<SettingsSlice>()(
                     });
                 }
 
+                if (version < 35) {
+                    // Parametric EQ upgrade: bands saved by the old graphical
+                    // EQ have no type/qFactor. Default them to peaking with
+                    // ~1-octave bandwidth, which matches the previous
+                    // behaviour exactly.
+                    const bands = state.playback?.equalizer?.bands as
+                        | (Partial<EqBand> & { freq?: number; gain?: number })[]
+                        | undefined;
+                    if (Array.isArray(bands)) {
+                        for (const band of bands) {
+                            if (!band.type) band.type = EqType.Peaking;
+                            if (band.qFactor === undefined) band.qFactor = 1.41;
+                        }
+                    }
+                }
+
                 return persistedState;
             },
             name: 'store_settings',
-            version: 34,
+            version: 35,
         },
     ),
 );

@@ -358,63 +358,36 @@ export type EqPreset = {
     name: string;
 };
 
+// The 12 frequencies of the pre-parametric graphical EQ. Also used to
+// migrate user-saved custom presets (stored as bare gain arrays).
+export const LEGACY_EQ_FREQUENCIES = [
+    31.5, 63, 125, 250, 500, 1000, 2000, 3000, 4000, 6300, 10_000, 16_000,
+];
+
+// Built-in presets mirror the pre-parametric graphical EQ one-to-one:
+// 12 peaking bands (~1-octave Q) at the legacy frequencies, so an applied
+// preset sounds exactly like it did before this overhaul.
+const eqPresetFromGains = (name: string, gains: number[]): EqPreset => ({
+    bands: LEGACY_EQ_FREQUENCIES.map((freq, i) => bandFactory(freq, gains[i] ?? 0)),
+    name,
+});
+
 // Shared module state — callers that persist a preset should clone the
 // bands and regenerate ids so two applications never share band ids.
 export const eqPresets: EqPreset[] = [
-    {
-        bands: getDefaultEqBands(),
-        name: 'Flat',
-    },
-    {
-        bands: [
-            bandFactory(300, 2),
-            bandFactory(600, 2),
-            bandFactory(1200, 3),
-            bandFactory(2400, 2),
-            bandFactory(4800, 1),
-            bandFactory(9600, 0),
-        ],
-        name: 'Acoustic',
-    },
-    {
-        bands: [
-            bandFactory(300, 6),
-            bandFactory(240, 5),
-            bandFactory(180, 4),
-            bandFactory(120, 2, EqType.LowShelf),
-        ],
-        name: 'Bass Boost',
-    },
-    {
-        bands: [
-            bandFactory(300, -6),
-            bandFactory(240, -5),
-            bandFactory(180, -4),
-            bandFactory(120, -2, EqType.LowShelf),
-        ],
-        name: 'Bass Cut',
-    },
-    {
-        bands: [
-            bandFactory(300, 4),
-            bandFactory(600, 3),
-            bandFactory(1200, 1),
-            bandFactory(2400, 0),
-            bandFactory(4800, -1),
-            bandFactory(9600, 1),
-            bandFactory(19200, 3, EqType.HighShelf),
-        ],
-        name: 'Electronic',
-    },
-    {
-        bands: [
-            bandFactory(300, 5),
-            bandFactory(240, 4),
-            bandFactory(180, 2),
-            bandFactory(120, 1, EqType.LowShelf),
-            bandFactory(9600, -1),
-            bandFactory(19200, 3, EqType.HighShelf),
-        ],
-        name: 'Hip-Hop',
-    },
+    eqPresetFromGains('Flat', [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]),
+    eqPresetFromGains('Acoustic', [2, 2, 3, 2, 1, 0, 1, 2, 2, 2, 2, 1]),
+    eqPresetFromGains('Bass Boost', [6, 5, 4, 2, 1, 0, 0, 0, 0, 0, 0, 0]),
+    eqPresetFromGains('Bass Cut', [-6, -5, -4, -2, -1, 0, 0, 0, 0, 0, 0, 0]),
+    eqPresetFromGains('Classical', [0, 0, 0, 0, 0, 0, -1, -1, 0, 0, 0, -3]),
+    eqPresetFromGains('Electronic', [4, 3, 1, 0, -1, 0, 1, 0, 0, 2, 3, 4]),
+    eqPresetFromGains('Hip-Hop', [5, 4, 2, 1, 0, -1, 0, 1, 0, 1, 2, 3]),
+    eqPresetFromGains('Jazz', [2, 1, 0, 1, 2, 2, 1, 0, 0, 1, 2, 2]),
+    eqPresetFromGains('Loudness', [5, 3, 1, 0, -1, -2, -2, -1, 0, 1, 3, 6]),
+    eqPresetFromGains('Pop', [-1, 0, 2, 3, 3, 2, 0, -1, -1, 0, 0, 0]),
+    eqPresetFromGains('Rock', [3, 2, 1, 0, -1, 0, 1, 2, 2, 2, 3, 3]),
+    eqPresetFromGains('Treble Boost', [0, 0, 0, 0, 0, 0, 1, 2, 3, 4, 5, 6]),
+    eqPresetFromGains('Treble Cut', [0, 0, 0, 0, 0, 0, -1, -2, -3, -4, -5, -6]),
+    eqPresetFromGains('V-Shape', [5, 3, 1, 0, -1, -2, -2, -1, 0, 1, 3, 5]),
+    eqPresetFromGains('Vocal Boost', [-1, 0, 1, 2, 3, 4, 4, 3, 2, 1, 0, -1]),
 ];
