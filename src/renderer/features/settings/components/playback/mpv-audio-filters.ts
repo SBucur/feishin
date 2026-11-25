@@ -70,14 +70,14 @@ const buildMpvEqFilter = (band: EqBand): null | string => {
         case EqType.HighShelf:
             if (Math.abs(band.gain) < 0.1) return null;
             // FFmpeg's `treble` filter is a high shelf
-            return `lavfi=[treble=g=${band.gain}:f=${band.freq}:w=${w}]`;
+            return `lavfi=[treble=g=${band.gain}:f=${band.freq}:width_type=o:w=${w}]`;
         case EqType.LowPass:
             // Pass filters have no gain - only frequency and width matter
             return `lavfi=[lowpass=f=${band.freq}:width_type=o:w=${w}]`;
         case EqType.LowShelf:
             if (Math.abs(band.gain) < 0.1) return null;
             // FFmpeg's `bass` filter is a low shelf; `g` is in dB
-            return `lavfi=[bass=g=${band.gain}:f=${band.freq}:w=${w}]`;
+            return `lavfi=[bass=g=${band.gain}:f=${band.freq}:width_type=o:w=${w}]`;
         case EqType.Peaking:
         default:
             if (Math.abs(band.gain) < 0.1) return null;
