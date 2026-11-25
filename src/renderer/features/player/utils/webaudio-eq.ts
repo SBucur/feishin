@@ -1,15 +1,14 @@
 import { EqBand, EqType } from '/@/shared/types/types';
 
-// The EQ portion of the live Web Audio graph, as exposed via WebAudio.dsp.
 export type EqDspChain = {
     compressor: DynamicsCompressorNode;
     eqFilters: BiquadFilterNode[];
+    makeupGain: GainNode;
     preampGain: GainNode;
 };
 
-// Maps a parametric EQ band onto a Web Audio BiquadFilterNode. Shared
-// between the initial graph build (audio-players) and the live updates
-// driven from the settings panel (eq-settings) so both stay in sync.
+// Shared by the graph build (audio-players) and live settings updates so
+// both paths apply identical type/Q semantics.
 export const applyBandToBiquadFilter = (
     filter: BiquadFilterNode,
     band: EqBand,
@@ -19,8 +18,7 @@ export const applyBandToBiquadFilter = (
 
     switch (band.type) {
         case EqType.BandNotch:
-            // Web Audio has no notch type; a deep, narrow peaking cut
-            // approximates the lavfi `bandreject` used on the MPV backend.
+            // Web Audio has no notch type; a deep narrow peaking cut approximates bandreject.
             filter.type = 'peaking';
             filter.Q.value = Math.min(20, band.qFactor * 3);
             filter.gain.value = enabled ? -40 : 0;
@@ -41,7 +39,7 @@ export const applyBandToBiquadFilter = (
             filter.gain.value = 0; // unused by pass filters
             break;
         case EqType.LowShelf:
-            // Note: per the Web Audio spec, Q is ignored for shelf filters.
+            // Per the Web Audio spec, Q is ignored for shelf filters.
             filter.type = 'lowshelf';
             filter.Q.value = band.qFactor;
             filter.gain.value = enabled ? band.gain : 0;
@@ -54,17 +52,14 @@ export const applyBandToBiquadFilter = (
     }
 };
 
-// Rebuilds the preamp → filters → compressor segment of the graph when the
-// band COUNT changes (add/remove band). The gains → preamp and
-// compressor → destination connections are owned by the graph builder and
-// left untouched. Returns the new filter array for dsp.eqFilters.
+// Rewires only the preamp → filters → compressor segment; upstream and
+// downstream connections stay untouched. Returns the new filter array.
 export const rebuildBiquadChain = (
     context: AudioContext,
     dsp: EqDspChain,
     bands: EqBand[],
     enabled: boolean,
 ): BiquadFilterNode[] => {
-    // Drop every existing filter/preamp output connection before rewiring
     dsp.preampGain.disconnect();
     for (const filter of dsp.eqFilters) filter.disconnect();
 

@@ -232,17 +232,13 @@ const AudioPlayersContent = ({
 
         const gains = [context.createGain(), context.createGain()];
 
-        // Build DSP chain from persisted settings so EQ/compressor
-        // are active immediately on first playback, not just after
-        // the user opens the settings panel.
+        // Build the DSP chain from persisted settings so EQ/compressor are active on first playback.
         const { compressor, equalizer } = useSettingsStore.getState().playback;
 
         // Preamp gain — converts dB to linear
         const preampGain = context.createGain();
         preampGain.gain.value = equalizer.enabled ? Math.pow(10, equalizer.preamp / 20) : 1;
 
-        // One parametric EQ filter per band - the type/Q mapping is handled
-        // by the shared helper, so live settings updates stay in sync.
         const eqFilters: BiquadFilterNode[] = equalizer.bands.map((band) => {
             const filter = context.createBiquadFilter();
             applyBandToBiquadFilter(filter, band, equalizer.enabled);
@@ -266,7 +262,11 @@ const AudioPlayersContent = ({
             compressorNode.knee.value = 0;
         }
 
-        // Wire: each gain → preamp → eq[0] → eq[1] → ... → compressor → destination
+        // Makeup gain - DynamicsCompressorNode has no makeup param (MPV acompressor does)
+        const makeupGain = context.createGain();
+        makeupGain.gain.value = compressor.enabled ? Math.pow(10, compressor.makeup / 20) : 1;
+
+        // Wire: each gain → preamp → eq[0] → eq[1] → ... → compressor → makeup → destination
         for (const gain of gains) {
             gain.connect(preampGain);
         }
@@ -281,11 +281,12 @@ const AudioPlayersContent = ({
             preampGain.connect(compressorNode);
         }
 
-        compressorNode.connect(context.destination);
+        compressorNode.connect(makeupGain);
+        makeupGain.connect(context.destination);
 
         setWebAudio?.({
             context,
-            dsp: { compressor: compressorNode, eqFilters, preampGain },
+            dsp: { compressor: compressorNode, eqFilters, makeupGain, preampGain },
             gains,
         });
 

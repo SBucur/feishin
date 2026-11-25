@@ -2,6 +2,7 @@ import isElectron from 'is-electron';
 import { memo, useCallback, useContext, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
+import styles from './eq-settings.module.css';
 import { buildMpvAudioFilters, type CompressorSettings } from './mpv-audio-filters';
 
 import { WebAudioContext } from '/@/renderer/features/player/context/webaudio-context';
@@ -40,7 +41,6 @@ const EQ_MIN = -12;
 const EQ_MAX = 12;
 const EQ_STEP = 0.5;
 
-// Parametric band limits (qFactor matches the zod schema in settings.store)
 const FREQ_MIN = 20;
 const FREQ_MAX = 20_000;
 const Q_MIN = 0.3;
@@ -48,8 +48,7 @@ const Q_MAX = 5;
 // Room for the 12-band presets plus a couple of manual additions
 const MAX_BANDS = 16;
 
-// Old custom presets were Record<string, number[]> - 12 gains for the fixed
-// graphical EQ. Convert them to peaking bands at the legacy frequencies.
+// Old custom presets were bare 12-gain arrays; convert them to peaking bands.
 const migrateCustomEqPresets = (raw: Record<string, unknown>): Record<string, EqBand[]> => {
     const presets: Record<string, EqBand[]> = {};
     for (const [name, value] of Object.entries(raw)) {
@@ -103,9 +102,7 @@ export const EqSettings = memo(() => {
     const settings = usePlaybackSettings();
     const { setSettings } = useSettingsStoreActions();
 
-    // Ref pattern to avoid stale closure when reading webAudio DSP nodes.
-    // webAudio?.dsp is undefined at callback creation time; the closure
-    // would capture that undefined even after AudioContext initialises.
+    // Read DSP nodes via ref so the callback never captures a stale/undefined context.
     const webAudioContext = useContext(WebAudioContext);
     const webAudioContextRef = useRef(webAudioContext);
     useEffect(() => {
@@ -132,19 +129,13 @@ export const EqSettings = memo(() => {
             }
 
             // ── Web Audio player ──────────────────────────────────────────
-            // Read from ref so we always get the current AudioContext state,
-            // not the stale value captured when this callback was created.
             const webAudio = webAudioContextRef.current.webAudio;
             const dsp = webAudio?.dsp;
             if (!dsp || !webAudio) return;
 
-            // Mutations to Web Audio API AudioParam values are intentional
-            // side effects on the live audio graph, not React state mutations.
-
             dsp.preampGain.gain.value = eq.enabled ? Math.pow(10, eq.preamp / 20) : 1;
 
             if (dsp.eqFilters.length !== eq.bands.length) {
-                // Band count changed (add/remove) - rewire the graph segment
                 dsp.eqFilters = rebuildBiquadChain(webAudio.context, dsp, eq.bands, eq.enabled);
             } else {
                 dsp.eqFilters.forEach((filter, i) => {
@@ -154,6 +145,11 @@ export const EqSettings = memo(() => {
                     }
                 });
             }
+
+            // Makeup gain - DynamicsCompressorNode has no makeup param (MPV acompressor does)
+            dsp.makeupGain.gain.value = compressor.enabled
+                ? Math.pow(10, compressor.makeup / 20)
+                : 1;
 
             if (compressor.enabled) {
                 dsp.compressor.threshold.value = compressor.threshold;
@@ -174,8 +170,7 @@ export const EqSettings = memo(() => {
         [settings.type],
     );
 
-    // Re-apply filters when switching to Web Audio so DSP nodes reflect
-    // persisted settings immediately without requiring a slider interaction.
+    // Re-apply on type switch so persisted DSP settings take effect immediately.
     useEffect(() => {
         if (settings.type === PlayerType.WEB) {
             applyFilters(settings.equalizer, settings.compressor);
@@ -228,9 +223,6 @@ export const EqSettings = memo(() => {
         applyFilters(newEq, settings.compressor);
     };
 
-    // Presets replace the whole band set. Bands are copied with freshly
-    // generated ids so applied bands never share identity with the shared
-    // preset module state (or with a second application of the same preset).
     const applyEqPreset = (bands: EqBand[]) => {
         const newEq = {
             ...settings.equalizer,
@@ -500,21 +492,17 @@ export const EqSettings = memo(() => {
                   },
                   {
                       control: (
-                          // One compact row per band, left to right:
-                          // filter type · frequency (Hz) · Q · gain slider
-                          // (-12..+12 dB) with live readout · remove. Rows are
-                          // left-aligned so the columns line up across bands.
-                          <Stack gap={6} w="100%">
+                          <Stack gap="xs" maw="100%" w={560}>
                               {settings.equalizer.bands.map((band, i) => (
-                                  <Group gap={6} key={band.id ?? i} wrap="nowrap">
+                                  <Group gap="xs" key={band.id ?? i} wrap="nowrap">
                                       <Select
                                           data={eqTypeOptions}
                                           onChange={(value) =>
                                               value && handleBandPatch(i, { type: value as EqType })
                                           }
-                                          size="xs"
+                                          size="sm"
                                           value={band.type}
-                                          w={112}
+                                          width="22%"
                                       />
                                       <NumberInput
                                           defaultValue={band.freq}
@@ -536,10 +524,10 @@ export const EqSettings = memo(() => {
                                           onKeyDown={(e) => {
                                               if (e.key === 'Enter') e.currentTarget.blur();
                                           }}
-                                          size="xs"
-                                          suffix=" Hz"
+                                          rightSection={<Text size="xs">Hz</Text>}
+                                          size="sm"
                                           title={t('setting.equalizerBandFrequency')}
-                                          w={84}
+                                          width="14%"
                                       />
                                       <NumberInput
                                           defaultValue={band.qFactor}
@@ -561,24 +549,23 @@ export const EqSettings = memo(() => {
                                           onKeyDown={(e) => {
                                               if (e.key === 'Enter') e.currentTarget.blur();
                                           }}
-                                          size="xs"
+                                          rightSection={<Text size="xs">Q</Text>}
+                                          size="sm"
                                           step={0.1}
-                                          suffix=" Q"
                                           title={t('setting.equalizerBandQ')}
-                                          w={64}
+                                          width="11%"
                                       />
                                       <Slider
+                                          className={styles['band-gain']}
                                           label={null}
                                           max={EQ_MAX}
                                           min={EQ_MIN}
                                           onChange={(v) => handleBandPatch(i, { gain: v })}
-                                          size="xs"
                                           step={EQ_STEP}
-                                          style={{ flex: 1 }}
                                           thumbLabel={`EQ ${band.freq} Hz gain`}
                                           value={band.gain}
                                       />
-                                      <Text size="xs" style={{ textAlign: 'right' }} w={40}>
+                                      <Text className={styles['band-gain-value']} size="sm">
                                           {`${band.gain > 0 ? '+' : ''}${band.gain}`}
                                       </Text>
                                       <ActionIcon
@@ -586,7 +573,7 @@ export const EqSettings = memo(() => {
                                           disabled={settings.equalizer.bands.length <= 1}
                                           icon="x"
                                           onClick={() => handleRemoveBand(i)}
-                                          size="xs"
+                                          size="sm"
                                           variant="subtle"
                                       />
                                   </Group>
@@ -594,15 +581,13 @@ export const EqSettings = memo(() => {
                               <Button
                                   disabled={settings.equalizer.bands.length >= MAX_BANDS}
                                   onClick={handleAddBand}
-                                  size="xs"
                                   variant="subtle"
                                   w="fit-content"
                               >
-                                  {t('setting.equalizerBandAdd')}
+                                  {t('common.add')}
                               </Button>
                           </Stack>
                       ),
-                      controlFullWidth: true,
                       description: t('setting.equalizerBands', { context: 'description' }),
                       title: t('setting.equalizerBands'),
                   },

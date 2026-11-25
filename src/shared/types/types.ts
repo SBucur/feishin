@@ -114,12 +114,12 @@ export enum CrossfadeStyle {
 }
 
 export enum EqType {
-    BandNotch = 'bandnotch', // Removes a narrow band of frequencies
-    HighPass = 'highpass', // Attenuates everything below the cutoff
-    HighShelf = 'highshelf', // Boosts or cuts high frequencies
-    LowPass = 'lowpass', // Attenuates everything above the cutoff
-    LowShelf = 'lowshelf', // Boosts or cuts low frequencies
-    Peaking = 'peaking', // Boosts or cuts a narrow band
+    BandNotch = 'bandnotch',
+    HighPass = 'highpass',
+    HighShelf = 'highshelf',
+    LowPass = 'lowpass',
+    LowShelf = 'lowshelf',
+    Peaking = 'peaking',
 }
 
 export enum FontType {
@@ -225,19 +225,18 @@ export type DiscoveredServerItem = {
 };
 
 export interface EqBand {
-    freq: number; // Center frequency in Hz
-    gain: number; // Gain in dB, clamped to [-12, 12]
-    // Present for bands created by the UI/presets; optional so settings
-    // saved before the parametric EQ upgrade still parse.
+    freq: number; // Hz
+    gain: number; // dB
+    // Optional so settings saved before the parametric upgrade still parse.
     id?: string;
-    qFactor: number; // Quality factor (0.3–5.0), controls band width
-    type: EqType; // EQ filter type
+    qFactor: number; // Band width, 0.3-5.0
+    type: EqType;
 }
 
 export interface EqSettings {
-    bands: EqBand[]; // Dynamic array - defaults to 3 bands (Low / Mid / High)
+    bands: EqBand[];
     enabled: boolean;
-    preamp: number; // Pre-gain in dB, clamped to [-12, 12]
+    preamp: number; // dB
 }
 
 export type GridCardData = {
@@ -321,6 +320,7 @@ export type WebAudio = {
     dsp: null | {
         compressor: DynamicsCompressorNode;
         eqFilters: BiquadFilterNode[];
+        makeupGain: GainNode;
         preampGain: GainNode;
     };
     gains: GainNode[];
@@ -345,28 +345,22 @@ const bandFactory = (
     type,
 });
 
-// Default 3-band EQ: low shelf / peaking mid / high shelf.
 export const getDefaultEqBands = (): EqBand[] => [
     bandFactory(300, 0, EqType.LowShelf, 1.5),
     bandFactory(3000, 0, EqType.Peaking, 2.0),
     bandFactory(6300, 0, EqType.HighShelf, 1.8),
 ];
 
-// ─── Preset definitions ────────────────────────────────────────────────
 export type EqPreset = {
     bands: EqBand[];
     name: string;
 };
 
-// The 12 frequencies of the pre-parametric graphical EQ. Also used to
-// migrate user-saved custom presets (stored as bare gain arrays).
+// Old graphical EQ frequencies; also used to migrate legacy presets.
 export const LEGACY_EQ_FREQUENCIES = [
     31.5, 63, 125, 250, 500, 1000, 2000, 3000, 4000, 6300, 10_000, 16_000,
 ];
 
-// Built-in presets mirror the pre-parametric graphical EQ one-to-one:
-// 12 peaking bands (~1-octave Q) at the legacy frequencies, so an applied
-// preset sounds exactly like it did before this overhaul.
 const eqPresetFromGains = (name: string, gains: number[]): EqPreset => ({
     bands: LEGACY_EQ_FREQUENCIES.map((freq, i) => bandFactory(freq, gains[i] ?? 0)),
     name,
