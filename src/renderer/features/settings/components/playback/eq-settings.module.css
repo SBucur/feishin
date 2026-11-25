@@ -1,0 +1,10 @@
+.band-gain {
+    flex: 1;
+    min-width: 0;
+}
+
+.band-gain-value {
+    min-width: 3.5rem;
+    font-variant-numeric: tabular-nums;
+    text-align: right;
+}

@@ -241,7 +241,7 @@ const AudioPlayersContent = ({
         const preampGain = context.createGain();
         preampGain.gain.value = equalizer.enabled ? Math.pow(10, equalizer.preamp / 20) : 1;
 
-        // One parametric EQ filter per band — the type/Q mapping is handled
+        // One parametric EQ filter per band - the type/Q mapping is handled
         // by the shared helper, so live settings updates stay in sync.
         const eqFilters: BiquadFilterNode[] = equalizer.bands.map((band) => {
             const filter = context.createBiquadFilter();

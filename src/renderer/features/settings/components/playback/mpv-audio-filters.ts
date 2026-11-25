@@ -53,9 +53,8 @@ export function buildMpvAudioFilters(eq: EqSettings, compressor: CompressorSetti
     return parts.join(',');
 }
 
-// Converts a Q factor to a band width in octaves for lavfi `width_type=o`
-// filters: BW_oct = (2/ln2) * asinh(1 / (2*Q)). Q=1.41 → ~1 octave, which
-// matches the ~1-octave spacing of the old graphical EQ bands.
+// Q to octave width for lavfi width_type=o. Q=1.41 gives ~1 octave, the
+// spacing of the old graphical EQ bands.
 const qToOctaves = (qFactor: number): number =>
     Math.min(5, Math.max(0.1, (2 / Math.LN2) * Math.asinh(1 / (2 * qFactor))));
 
@@ -73,7 +72,7 @@ const buildMpvEqFilter = (band: EqBand): null | string => {
             // FFmpeg's `treble` filter is a high shelf
             return `lavfi=[treble=g=${band.gain}:f=${band.freq}:w=${w}]`;
         case EqType.LowPass:
-            // Pass filters have no gain — only frequency and width matter
+            // Pass filters have no gain - only frequency and width matter
             return `lavfi=[lowpass=f=${band.freq}:width_type=o:w=${w}]`;
         case EqType.LowShelf:
             if (Math.abs(band.gain) < 0.1) return null;

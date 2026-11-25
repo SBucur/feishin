@@ -301,9 +301,6 @@ const MpvSettingsSchema = z.object({
 const EqBandSchema = z.object({
     freq: z.number().positive(),
     gain: z.number(),
-    // id/type/qFactor were added with the parametric EQ. They are optional
-    // with peaking + ~1-octave defaults so settings saved before the
-    // upgrade keep their previous behaviour.
     id: z.string().optional(),
     qFactor: z.number().min(0.3).max(5).default(1.41),
     type: z.nativeEnum(EqType).default(EqType.Peaking),
@@ -2931,13 +2928,9 @@ export const useSettingsStore = createWithEqualityFn<SettingsSlice>()(
                 }
 
                 if (version < 35) {
-                    // Parametric EQ upgrade: bands saved by the old graphical
-                    // EQ have no type/qFactor. Default them to peaking with
-                    // ~1-octave bandwidth, which matches the previous
-                    // behaviour exactly.
+                    // Old bands lack type/qFactor; zod defaults reproduce the old behaviour.
                     const bands = state.playback?.equalizer?.bands as
-                        | (Partial<EqBand> & { freq?: number; gain?: number })[]
-                        | undefined;
+                        (Partial<EqBand> & { freq?: number; gain?: number })[] | undefined;
                     if (Array.isArray(bands)) {
                         for (const band of bands) {
                             if (!band.type) band.type = EqType.Peaking;

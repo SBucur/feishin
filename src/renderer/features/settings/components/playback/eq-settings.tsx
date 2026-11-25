@@ -1,4 +1,3 @@
-import { useMove } from '@mantine/hooks';
 import isElectron from 'is-electron';
 import { memo, useCallback, useContext, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -15,6 +14,7 @@ import {
     SettingsSection,
 } from '/@/renderer/features/settings/components/settings-section';
 import { usePlaybackSettings, useSettingsStoreActions } from '/@/renderer/store/settings.store';
+import { ActionIcon } from '/@/shared/components/action-icon/action-icon';
 import { Button } from '/@/shared/components/button/button';
 import { Divider } from '/@/shared/components/divider/divider';
 import { Group } from '/@/shared/components/group/group';
@@ -48,10 +48,7 @@ const Q_MAX = 5;
 // Room for the 12-band presets plus a couple of manual additions
 const MAX_BANDS = 16;
 
-const formatHz = (freq: number): string =>
-    freq >= 1000 ? `${String(freq / 1000).replace(/\.0$/, '')}k` : String(freq);
-
-// Old custom presets were Record<string, number[]> — 12 gains for the fixed
+// Old custom presets were Record<string, number[]> - 12 gains for the fixed
 // graphical EQ. Convert them to peaking bands at the legacy frequencies.
 const migrateCustomEqPresets = (raw: Record<string, unknown>): Record<string, EqBand[]> => {
     const presets: Record<string, EqBand[]> = {};
@@ -100,166 +97,6 @@ function saveCustomPresets<T>(key: string, presets: Record<string, T>) {
     localStorage.setItem(key, JSON.stringify(presets));
 }
 
-// ─── Vertical EQ band slider ──────────────────────────────────────────────────
-// Mantine v8 does not include orientation="vertical" on Slider.
-// We use useMove from @mantine/hooks (the Mantine-recommended approach for
-// vertical sliders in v8) so drag direction is correct — dragging up
-// increases the value, dragging down decreases it.
-// Styling uses the same CSS variables as the existing Slider module CSS
-// so it inherits the app theme correctly.
-const TRACK_H = 120; // px — rendered height of the vertical track
-const THUMB_R = 6; // px — thumb radius
-
-function EqBandSlider({
-    gain,
-    label,
-    onChangeEnd,
-}: {
-    freq: number;
-    gain: number;
-    label: string;
-    onChangeEnd: (v: number) => void;
-}) {
-    // currentGain drives the live visual during dragging.
-    // It is synced from the `gain` prop when external changes arrive
-    // (preset applied, reset).
-    const [currentGain, setCurrentGain] = useState(gain);
-    const currentGainRef = useRef(currentGain);
-
-    // Stable ref so onScrubEnd always calls the latest onChangeEnd even
-    // though useMove's refCallback closes over the initial handlers object.
-    const onChangeEndRef = useRef(onChangeEnd);
-
-    useEffect(() => {
-        setCurrentGain(gain);
-        currentGainRef.current = gain;
-    }, [gain]);
-
-    useEffect(() => {
-        onChangeEndRef.current = onChangeEnd;
-    }, [onChangeEnd]);
-
-    // handleMove must be stable (empty deps) so useMove's internal
-    // refCallback is only created once and listeners are not re-bound
-    // on every render.
-    const handleMove = useCallback(({ y }: { x: number; y: number }) => {
-        // useMove gives y=0 at the top of the element and y=1 at the bottom.
-        // Invert so dragging upward increases the value.
-        const raw = EQ_MAX - y * (EQ_MAX - EQ_MIN);
-        const stepped = Math.round(raw / EQ_STEP) * EQ_STEP;
-        const clamped = Math.max(EQ_MIN, Math.min(EQ_MAX, stepped));
-        setCurrentGain(clamped);
-        currentGainRef.current = clamped;
-    }, []);
-
-    const { active, ref } = useMove(handleMove, {
-        onScrubEnd: () => {
-            // Access ref so the latest onChangeEnd is called even though
-            // this handler was captured in the initial closure.
-            onChangeEndRef.current(currentGainRef.current);
-        },
-    });
-
-    // Percentage from bottom: 0 = min (-12dB), 100 = max (+12dB)
-    const thumbPct = ((currentGain - EQ_MIN) / (EQ_MAX - EQ_MIN)) * 100;
-    const zeroPct = ((0 - EQ_MIN) / (EQ_MAX - EQ_MIN)) * 100; // 50 for ±12 range
-
-    // Fill spans between zero line and thumb, regardless of direction
-    const fillBottomPct = Math.min(thumbPct, zeroPct);
-    const fillTopPct = 100 - Math.max(thumbPct, zeroPct);
-
-    return (
-        <Stack align="center" gap={4}>
-            {/* Manual value input — keyed on gain prop so it remounts
-            when an external change arrives (preset, reset) */}
-            <NumberInput
-                defaultValue={gain}
-                hideControls
-                key={gain}
-                max={EQ_MAX}
-                min={EQ_MIN}
-                onBlur={(e) => {
-                    const val = parseFloat(e.currentTarget.value);
-                    if (!isNaN(val)) {
-                        const clamped = Math.max(EQ_MIN, Math.min(EQ_MAX, val));
-                        setCurrentGain(clamped);
-                        currentGainRef.current = clamped;
-                        onChangeEndRef.current(clamped);
-                    }
-                }}
-                onKeyDown={(e) => {
-                    if (e.key === 'Enter') e.currentTarget.blur();
-                }}
-                size="xs"
-                step={EQ_STEP}
-                w={52}
-            />
-
-            {/* Vertical track — useMove attaches pointer listeners here */}
-            <div
-                ref={ref}
-                style={{
-                    background: 'var(--mantine-color-default-border)',
-                    borderRadius: 4,
-                    cursor: active ? 'grabbing' : 'grab',
-                    height: TRACK_H,
-                    position: 'relative',
-                    userSelect: 'none',
-                    width: 8,
-                }}
-            >
-                {/* Coloured fill between the zero line and the thumb */}
-                <div
-                    style={{
-                        background: 'var(--mantine-color-blue-filled)',
-                        borderRadius: 2,
-                        bottom: `${fillBottomPct}%`,
-                        left: 1,
-                        position: 'absolute',
-                        right: 1,
-                        top: `${fillTopPct}%`,
-                    }}
-                />
-
-                {/* Zero-line tick mark */}
-                <div
-                    style={{
-                        background: 'var(--mantine-color-gray-5)',
-                        bottom: `${zeroPct}%`,
-                        height: 1,
-                        left: -2,
-                        position: 'absolute',
-                        right: -2,
-                    }}
-                />
-
-                {/* Thumb — centre is at thumbPct% from the bottom */}
-                <div
-                    style={{
-                        // bottom: calc(thumbPct% - THUMB_R) places the
-                        // thumb centre exactly at thumbPct% of track height
-                        background: 'var(--theme-colors-foreground)',
-                        border: '2px solid var(--mantine-color-default-border)',
-                        borderRadius: '50%',
-                        bottom: `calc(${thumbPct}% - ${THUMB_R}px)`,
-                        height: THUMB_R * 2,
-                        left: '50%',
-                        pointerEvents: 'none',
-                        position: 'absolute',
-                        transform: 'translateX(-50%)',
-                        width: THUMB_R * 2,
-                    }}
-                />
-            </div>
-
-            {/* Frequency label */}
-            <Text isMuted size="xs" style={{ textAlign: 'center' }}>
-                {label}
-            </Text>
-        </Stack>
-    );
-}
-
 // ─── Main component ───────────────────────────────────────────────────────────
 export const EqSettings = memo(() => {
     const { t } = useTranslation();
@@ -303,11 +140,11 @@ export const EqSettings = memo(() => {
 
             // Mutations to Web Audio API AudioParam values are intentional
             // side effects on the live audio graph, not React state mutations.
-            // eslint-disable-next-line react-hooks/immutability
+
             dsp.preampGain.gain.value = eq.enabled ? Math.pow(10, eq.preamp / 20) : 1;
 
             if (dsp.eqFilters.length !== eq.bands.length) {
-                // Band count changed (add/remove) — rewire the graph segment
+                // Band count changed (add/remove) - rewire the graph segment
                 dsp.eqFilters = rebuildBiquadChain(webAudio.context, dsp, eq.bands, eq.enabled);
             } else {
                 dsp.eqFilters.forEach((filter, i) => {
@@ -663,19 +500,13 @@ export const EqSettings = memo(() => {
                   },
                   {
                       control: (
-                          // One column per band: vertical gain slider on top
-                          // (EqBandSlider uses useMove for correct drag
-                          // direction), then filter type, frequency (Hz) and Q
-                          // controls, and a remove button.
-                          <Group align="flex-start" gap={6} wrap="wrap">
+                          // One compact row per band, left to right:
+                          // filter type · frequency (Hz) · Q · gain slider
+                          // (-12..+12 dB) with live readout · remove. Rows are
+                          // left-aligned so the columns line up across bands.
+                          <Stack gap={6} w="100%">
                               {settings.equalizer.bands.map((band, i) => (
-                                  <Stack align="center" gap={4} key={band.id ?? i} w={116}>
-                                      <EqBandSlider
-                                          freq={band.freq}
-                                          gain={band.gain}
-                                          label={formatHz(band.freq)}
-                                          onChangeEnd={(v) => handleBandPatch(i, { gain: v })}
-                                      />
+                                  <Group gap={6} key={band.id ?? i} wrap="nowrap">
                                       <Select
                                           data={eqTypeOptions}
                                           onChange={(value) =>
@@ -683,81 +514,95 @@ export const EqSettings = memo(() => {
                                           }
                                           size="xs"
                                           value={band.type}
-                                          w={104}
+                                          w={112}
                                       />
-                                      <Group gap={4}>
-                                          <NumberInput
-                                              defaultValue={band.freq}
-                                              hideControls
-                                              key={`freq-${band.freq}`}
-                                              max={FREQ_MAX}
-                                              min={FREQ_MIN}
-                                              onBlur={(e) => {
-                                                  const val = parseFloat(e.currentTarget.value);
-                                                  if (!isNaN(val)) {
-                                                      handleBandPatch(i, {
-                                                          freq: Math.max(
-                                                              FREQ_MIN,
-                                                              Math.min(FREQ_MAX, val),
-                                                          ),
-                                                      });
-                                                  }
-                                              }}
-                                              onKeyDown={(e) => {
-                                                  if (e.key === 'Enter') e.currentTarget.blur();
-                                              }}
-                                              size="xs"
-                                              title={t('setting.equalizerBandFrequency')}
-                                              w={64}
-                                          />
-                                          <NumberInput
-                                              defaultValue={band.qFactor}
-                                              hideControls
-                                              key={`q-${band.qFactor}`}
-                                              max={Q_MAX}
-                                              min={Q_MIN}
-                                              onBlur={(e) => {
-                                                  const val = parseFloat(e.currentTarget.value);
-                                                  if (!isNaN(val)) {
-                                                      handleBandPatch(i, {
-                                                          qFactor: Math.max(
-                                                              Q_MIN,
-                                                              Math.min(Q_MAX, val),
-                                                          ),
-                                                      });
-                                                  }
-                                              }}
-                                              onKeyDown={(e) => {
-                                                  if (e.key === 'Enter') e.currentTarget.blur();
-                                              }}
-                                              size="xs"
-                                              step={0.1}
-                                              title={t('setting.equalizerBandQ')}
-                                              w={50}
-                                          />
-                                      </Group>
-                                      <Button
+                                      <NumberInput
+                                          defaultValue={band.freq}
+                                          hideControls
+                                          key={`freq-${band.freq}`}
+                                          max={FREQ_MAX}
+                                          min={FREQ_MIN}
+                                          onBlur={(e) => {
+                                              const val = parseFloat(e.currentTarget.value);
+                                              if (!isNaN(val)) {
+                                                  handleBandPatch(i, {
+                                                      freq: Math.max(
+                                                          FREQ_MIN,
+                                                          Math.min(FREQ_MAX, val),
+                                                      ),
+                                                  });
+                                              }
+                                          }}
+                                          onKeyDown={(e) => {
+                                              if (e.key === 'Enter') e.currentTarget.blur();
+                                          }}
+                                          size="xs"
+                                          suffix=" Hz"
+                                          title={t('setting.equalizerBandFrequency')}
+                                          w={84}
+                                      />
+                                      <NumberInput
+                                          defaultValue={band.qFactor}
+                                          hideControls
+                                          key={`q-${band.qFactor}`}
+                                          max={Q_MAX}
+                                          min={Q_MIN}
+                                          onBlur={(e) => {
+                                              const val = parseFloat(e.currentTarget.value);
+                                              if (!isNaN(val)) {
+                                                  handleBandPatch(i, {
+                                                      qFactor: Math.max(
+                                                          Q_MIN,
+                                                          Math.min(Q_MAX, val),
+                                                      ),
+                                                  });
+                                              }
+                                          }}
+                                          onKeyDown={(e) => {
+                                              if (e.key === 'Enter') e.currentTarget.blur();
+                                          }}
+                                          size="xs"
+                                          step={0.1}
+                                          suffix=" Q"
+                                          title={t('setting.equalizerBandQ')}
+                                          w={64}
+                                      />
+                                      <Slider
+                                          label={null}
+                                          max={EQ_MAX}
+                                          min={EQ_MIN}
+                                          onChange={(v) => handleBandPatch(i, { gain: v })}
+                                          size="xs"
+                                          step={EQ_STEP}
+                                          style={{ flex: 1 }}
+                                          thumbLabel={`EQ ${band.freq} Hz gain`}
+                                          value={band.gain}
+                                      />
+                                      <Text size="xs" style={{ textAlign: 'right' }} w={40}>
+                                          {`${band.gain > 0 ? '+' : ''}${band.gain}`}
+                                      </Text>
+                                      <ActionIcon
                                           aria-label={t('setting.equalizerBandRemove')}
                                           disabled={settings.equalizer.bands.length <= 1}
+                                          icon="x"
                                           onClick={() => handleRemoveBand(i)}
                                           size="xs"
-                                          title={t('setting.equalizerBandRemove')}
                                           variant="subtle"
-                                      >
-                                          ×
-                                      </Button>
-                                  </Stack>
+                                      />
+                                  </Group>
                               ))}
                               <Button
                                   disabled={settings.equalizer.bands.length >= MAX_BANDS}
                                   onClick={handleAddBand}
                                   size="xs"
                                   variant="subtle"
+                                  w="fit-content"
                               >
                                   {t('setting.equalizerBandAdd')}
                               </Button>
-                          </Group>
+                          </Stack>
                       ),
+                      controlFullWidth: true,
                       description: t('setting.equalizerBands', { context: 'description' }),
                       title: t('setting.equalizerBands'),
                   },

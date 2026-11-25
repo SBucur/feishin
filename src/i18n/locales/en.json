@@ -954,7 +954,6 @@
         "equalizer": "Equalizer",
         "equalizerBands_description": "Per-band filter: choose type, frequency, Q and gain. Drag the slider or type a value. Range: -12 to +12 dB.",
         "equalizerBands": "Bands",
-        "equalizerBandAdd": "Add band",
         "equalizerBandFrequency": "Frequency (Hz)",
         "equalizerBandQ": "Q",
         "equalizerBandRemove": "Remove band",

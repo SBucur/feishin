@@ -235,7 +235,7 @@ export interface EqBand {
 }
 
 export interface EqSettings {
-    bands: EqBand[]; // Dynamic array — defaults to 3 bands (Low / Mid / High)
+    bands: EqBand[]; // Dynamic array - defaults to 3 bands (Low / Mid / High)
     enabled: boolean;
     preamp: number; // Pre-gain in dB, clamped to [-12, 12]
 }
@@ -372,7 +372,7 @@ const eqPresetFromGains = (name: string, gains: number[]): EqPreset => ({
     name,
 });
 
-// Shared module state — callers that persist a preset should clone the
+// Shared module state - callers that persist a preset should clone the
 // bands and regenerate ids so two applications never share band ids.
 export const eqPresets: EqPreset[] = [
     eqPresetFromGains('Flat', [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]),
