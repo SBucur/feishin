@@ -198,7 +198,7 @@ export const FullScreenPlayerSettingsForm = () => {
                 <ListConfigTable options={playerOptions} />
             </Fieldset>
             <Fieldset p="md">
-                <FullscreenPlayerSettings showDescription={false} />
+                <FullscreenPlayerSettings />
             </Fieldset>
         </Stack>
     );

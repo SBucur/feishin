@@ -1,8 +1,9 @@
 .row {
-    align-items: center;
+    width: 100%;
 }
 
 .row-indented {
+    width: 100%;
     padding-left: var(--theme-spacing-lg);
     margin-left: var(--theme-spacing-md);
     border-left: 2px solid var(--theme-colors-surface);

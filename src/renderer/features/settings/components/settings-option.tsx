@@ -13,55 +13,37 @@ interface SettingsOptionProps {
     description?: React.ReactNode | string;
     indent?: boolean;
     note?: string;
-    showDescription?: boolean;
     title: React.ReactNode | string;
 }
 
 export const SettingsOptions = memo(
-    ({
-        control,
-        description,
-        indent,
-        note,
-        showDescription = true,
-        title,
-    }: SettingsOptionProps) => {
+    ({ control, description, indent, note, title }: SettingsOptionProps) => {
         return (
-            <>
-                <Group
-                    className={indent ? styles.rowIndented : styles.row}
-                    justify="space-between"
-                    wrap="nowrap"
-                >
-                    <Stack
-                        gap="xs"
-                        style={{
-                            display: 'flex',
-                            maxWidth: '50%',
-                        }}
-                    >
-                        <Group>
-                            <Text isNoSelect size="md">
-                                {title}
+            <Stack className={indent ? styles.rowIndented : styles.row} gap="xs">
+                <Stack gap="xs">
+                    <Group gap="xs" wrap="nowrap">
+                        <Text isNoSelect size="md">
+                            {title}
+                        </Text>
+                        {note && (
+                            <Tooltip label={note} openDelay={0}>
+                                <Icon icon="info" />
+                            </Tooltip>
+                        )}
+                    </Group>
+                    {description &&
+                        (React.isValidElement(description) ? (
+                            description
+                        ) : (
+                            <Text isMuted isNoSelect size="sm">
+                                {description}
                             </Text>
-                            {note && (
-                                <Tooltip label={note} openDelay={0}>
-                                    <Icon icon="info" />
-                                </Tooltip>
-                            )}
-                        </Group>
-                        {showDescription &&
-                            (React.isValidElement(description) ? (
-                                description
-                            ) : (
-                                <Text isMuted isNoSelect size="sm">
-                                    {description}
-                                </Text>
-                            ))}
-                    </Stack>
-                    <Group justify="flex-end">{control}</Group>
+                        ))}
+                </Stack>
+                <Group justify="flex-end" w="100%" wrap="nowrap">
+                    {control}
                 </Group>
-            </>
+            </Stack>
         );
     },
 );

@@ -1,9 +1,5 @@
 import { memo } from 'react';
 
-interface FullscreenPlayerSettingsProps {
-    showDescription?: boolean;
-}
-
 import { DraggableItems } from '/@/renderer/features/settings/components/general/draggable-items';
 import {
     PlayerItem,
@@ -31,21 +27,18 @@ const PLAYER_ITEMS: Array<[PlayerItem, string]> = [
     [PlayerItem.YEAR, 'filter.year'],
 ];
 
-export const FullscreenPlayerSettings = memo(
-    ({ showDescription = true }: FullscreenPlayerSettingsProps) => {
-        const { playerItems } = useGeneralSettings();
-        const { setPlayerItems } = useSettingsStoreActions();
+export const FullscreenPlayerSettings = memo(() => {
+    const { playerItems } = useGeneralSettings();
+    const { setPlayerItems } = useSettingsStoreActions();
 
-        return (
-            <DraggableItems
-                description="setting.playerItemConfiguration"
-                itemLabels={PLAYER_ITEMS}
-                items={playerItems as SortableItem<PlayerItem>[]}
-                nonReorderableItemIds={[PlayerItem.TITLE, PlayerItem.ARTIST, PlayerItem.ALBUM]}
-                setItems={setPlayerItems}
-                showDescription={showDescription}
-                title="setting.playerItemConfiguration"
-            />
-        );
-    },
-);
+    return (
+        <DraggableItems
+            description="setting.playerItemConfiguration"
+            itemLabels={PLAYER_ITEMS}
+            items={playerItems as SortableItem<PlayerItem>[]}
+            nonReorderableItemIds={[PlayerItem.TITLE, PlayerItem.ARTIST, PlayerItem.ALBUM]}
+            setItems={setPlayerItems}
+            title="setting.playerItemConfiguration"
+        />
+    );
+});
