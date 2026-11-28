@@ -2,6 +2,7 @@ import isElectron from 'is-electron';
 import { memo, useCallback, useContext, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
+import { EQGraph } from './eq-graph';
 import styles from './eq-settings.module.css';
 import { buildMpvAudioFilters, type CompressorSettings } from './mpv-audio-filters';
 
@@ -118,6 +119,7 @@ export const EqSettings = memo(() => {
     );
     const [saveEqName, setSaveEqName] = useState('');
     const [saveCompName, setSaveCompName] = useState('');
+    const [hoverBand, setHoverBand] = useState<null | number>(null);
 
     const applyFilters = useCallback(
         (eq: EqSettingsType, compressor: CompressorSettings) => {
@@ -492,100 +494,114 @@ export const EqSettings = memo(() => {
                   },
                   {
                       control: (
-                          <Stack gap="xs" maw="100%" w={560}>
-                              {settings.equalizer.bands.map((band, i) => (
-                                  <Group gap="xs" key={band.id ?? i} wrap="nowrap">
-                                      <Select
-                                          data={eqTypeOptions}
-                                          onChange={(value) =>
-                                              value && handleBandPatch(i, { type: value as EqType })
-                                          }
-                                          size="sm"
-                                          value={band.type}
-                                          width="22%"
-                                      />
-                                      <NumberInput
-                                          defaultValue={band.freq}
-                                          hideControls
-                                          key={`freq-${band.freq}`}
-                                          max={FREQ_MAX}
-                                          min={FREQ_MIN}
-                                          onBlur={(e) => {
-                                              const val = parseFloat(e.currentTarget.value);
-                                              if (!isNaN(val)) {
-                                                  handleBandPatch(i, {
-                                                      freq: Math.max(
-                                                          FREQ_MIN,
-                                                          Math.min(FREQ_MAX, val),
-                                                      ),
-                                                  });
+                          <Stack gap="sm" w="100%">
+                              <EQGraph
+                                  bands={settings.equalizer.bands}
+                                  hoverIndex={hoverBand}
+                                  preamp={settings.equalizer.preamp}
+                              />
+                              <Stack gap="xs">
+                                  {settings.equalizer.bands.map((band, i) => (
+                                      <Group
+                                          gap="xs"
+                                          key={band.id ?? i}
+                                          onMouseEnter={() => setHoverBand(i)}
+                                          onMouseLeave={() => setHoverBand(null)}
+                                          wrap="nowrap"
+                                      >
+                                          <Select
+                                              data={eqTypeOptions}
+                                              onChange={(value) =>
+                                                  value &&
+                                                  handleBandPatch(i, { type: value as EqType })
                                               }
-                                          }}
-                                          onKeyDown={(e) => {
-                                              if (e.key === 'Enter') e.currentTarget.blur();
-                                          }}
-                                          rightSection={<Text size="xs">Hz</Text>}
-                                          size="sm"
-                                          title={t('setting.equalizerBandFrequency')}
-                                          width="14%"
-                                      />
-                                      <NumberInput
-                                          defaultValue={band.qFactor}
-                                          hideControls
-                                          key={`q-${band.qFactor}`}
-                                          max={Q_MAX}
-                                          min={Q_MIN}
-                                          onBlur={(e) => {
-                                              const val = parseFloat(e.currentTarget.value);
-                                              if (!isNaN(val)) {
-                                                  handleBandPatch(i, {
-                                                      qFactor: Math.max(
-                                                          Q_MIN,
-                                                          Math.min(Q_MAX, val),
-                                                      ),
-                                                  });
-                                              }
-                                          }}
-                                          onKeyDown={(e) => {
-                                              if (e.key === 'Enter') e.currentTarget.blur();
-                                          }}
-                                          rightSection={<Text size="xs">Q</Text>}
-                                          size="sm"
-                                          step={0.1}
-                                          title={t('setting.equalizerBandQ')}
-                                          width="11%"
-                                      />
-                                      <Slider
-                                          className={styles['band-gain']}
-                                          label={null}
-                                          max={EQ_MAX}
-                                          min={EQ_MIN}
-                                          onChange={(v) => handleBandPatch(i, { gain: v })}
-                                          step={EQ_STEP}
-                                          thumbLabel={`EQ ${band.freq} Hz gain`}
-                                          value={band.gain}
-                                      />
-                                      <Text className={styles['band-gain-value']} size="sm">
-                                          {`${band.gain > 0 ? '+' : ''}${band.gain}`}
-                                      </Text>
-                                      <ActionIcon
-                                          aria-label={t('setting.equalizerBandRemove')}
-                                          disabled={settings.equalizer.bands.length <= 1}
-                                          icon="x"
-                                          onClick={() => handleRemoveBand(i)}
-                                          size="sm"
-                                          variant="subtle"
-                                      />
-                                  </Group>
-                              ))}
-                              <Button
-                                  disabled={settings.equalizer.bands.length >= MAX_BANDS}
-                                  onClick={handleAddBand}
-                                  variant="subtle"
-                                  w="fit-content"
-                              >
-                                  {t('common.add')}
-                              </Button>
+                                              size="sm"
+                                              value={band.type}
+                                              width="22%"
+                                          />
+                                          <NumberInput
+                                              defaultValue={band.freq}
+                                              hideControls
+                                              key={`freq-${band.freq}`}
+                                              max={FREQ_MAX}
+                                              min={FREQ_MIN}
+                                              onBlur={(e) => {
+                                                  const val = parseFloat(e.currentTarget.value);
+                                                  if (!isNaN(val)) {
+                                                      handleBandPatch(i, {
+                                                          freq: Math.max(
+                                                              FREQ_MIN,
+                                                              Math.min(FREQ_MAX, val),
+                                                          ),
+                                                      });
+                                                  }
+                                              }}
+                                              onKeyDown={(e) => {
+                                                  if (e.key === 'Enter') e.currentTarget.blur();
+                                              }}
+                                              rightSection={<Text size="xs">Hz</Text>}
+                                              size="sm"
+                                              title={t('setting.equalizerBandFrequency')}
+                                              width="14%"
+                                          />
+                                          <NumberInput
+                                              defaultValue={band.qFactor}
+                                              hideControls
+                                              key={`q-${band.qFactor}`}
+                                              max={Q_MAX}
+                                              min={Q_MIN}
+                                              onBlur={(e) => {
+                                                  const val = parseFloat(e.currentTarget.value);
+                                                  if (!isNaN(val)) {
+                                                      handleBandPatch(i, {
+                                                          qFactor: Math.max(
+                                                              Q_MIN,
+                                                              Math.min(Q_MAX, val),
+                                                          ),
+                                                      });
+                                                  }
+                                              }}
+                                              onKeyDown={(e) => {
+                                                  if (e.key === 'Enter') e.currentTarget.blur();
+                                              }}
+                                              rightSection={<Text size="xs">Q</Text>}
+                                              size="sm"
+                                              step={0.1}
+                                              title={t('setting.equalizerBandQ')}
+                                              width="11%"
+                                          />
+                                          <Slider
+                                              className={styles['band-gain']}
+                                              label={null}
+                                              max={EQ_MAX}
+                                              min={EQ_MIN}
+                                              onChange={(v) => handleBandPatch(i, { gain: v })}
+                                              step={EQ_STEP}
+                                              thumbLabel={`EQ ${band.freq} Hz gain`}
+                                              value={band.gain}
+                                          />
+                                          <Text className={styles['band-gain-value']} size="sm">
+                                              {`${band.gain > 0 ? '+' : ''}${band.gain}`}
+                                          </Text>
+                                          <ActionIcon
+                                              aria-label={t('setting.equalizerBandRemove')}
+                                              disabled={settings.equalizer.bands.length <= 1}
+                                              icon="x"
+                                              onClick={() => handleRemoveBand(i)}
+                                              size="sm"
+                                              variant="subtle"
+                                          />
+                                      </Group>
+                                  ))}
+                                  <Button
+                                      disabled={settings.equalizer.bands.length >= MAX_BANDS}
+                                      onClick={handleAddBand}
+                                      variant="subtle"
+                                      w="fit-content"
+                                  >
+                                      {t('common.add')}
+                                  </Button>
+                              </Stack>
                           </Stack>
                       ),
                       description: t('setting.equalizerBands', { context: 'description' }),

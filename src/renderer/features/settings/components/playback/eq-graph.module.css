@@ -1,0 +1,68 @@
+.graph {
+    display: block;
+    width: 100%;
+    height: auto;
+    overflow: hidden;
+    background: var(--theme-colors-surface);
+    border: 1px solid var(--theme-colors-border);
+    border-radius: var(--theme-radius-md);
+}
+
+.grid-line {
+    stroke: var(--theme-colors-border);
+    stroke-width: 1;
+}
+
+.zero-line {
+    stroke: var(--theme-colors-border);
+    stroke-width: 1.5;
+}
+
+.db-label {
+    font-family: inherit;
+    font-size: 9px;
+    fill: var(--theme-colors-foreground-muted);
+}
+
+.freq-label {
+    font-family: inherit;
+    font-size: 9px;
+    fill: var(--theme-colors-foreground-muted);
+}
+
+.total {
+    fill: none;
+    stroke: var(--theme-colors-primary);
+    stroke-width: 2;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+}
+
+.total-ghost {
+    fill: none;
+    stroke: var(--theme-colors-foreground-muted);
+    stroke-opacity: 0.45;
+    stroke-width: 1.25;
+    stroke-linejoin: round;
+}
+
+.band-fill {
+    fill: var(--theme-colors-primary);
+    fill-opacity: 0.12;
+    stroke: none;
+}
+
+.band-curve {
+    fill: none;
+    stroke: var(--theme-colors-primary);
+    stroke-width: 2.25;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+}
+
+.band-marker {
+    stroke: var(--theme-colors-primary);
+    stroke-opacity: 0.4;
+    stroke-width: 1;
+    stroke-dasharray: 3 3;
+}
